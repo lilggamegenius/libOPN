@@ -1,0 +1,18 @@
+; OPN_DLL.def : Deklariert die Modul-Parameter für die DLL.
+
+LIBRARY      "OPN_DLL"
+DESCRIPTION  'OPN_DLL Windows Dynamic Link Library'
+
+EXPORTS
+	; Explizite Exporte können hier eingefügt werden
+	
+	SetOPNOptions
+	OpenOPNDriver
+	CloseOPNDriver
+	
+	OPN_Write
+	OPN_Mute
+	
+	PlayDACSample
+	SetDACFrequency
+	SetDACVolume
