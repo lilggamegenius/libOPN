@@ -2,12 +2,12 @@
 //
 
 #include <stdio.h>
-#include "stdbool.h"
+#include "include/stdbool.h"
 #include <malloc.h>
 
-#include <windows.h>
+#include <Windows.h>
 
-#include "mamedef.h"	// for UINT8 etc.
+#include "ym2612/mamedef.h"    // for UINT8 etc.
 #include "Stream.h"
 
 static DWORD WINAPI WaveOutThread(void* Arg);
