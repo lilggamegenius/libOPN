@@ -4,35 +4,13 @@
 #include <malloc.h>
 #include <Windows.h>
 
+extern "C" {
 #include "ym2612/mamedef.h"
-
 #include "audio/Stream.h"
-#include "OPN_DLL.h"
-
 #include "ym2612/2612intf.h"
+}
 
-typedef struct chip_audio_attributes {
-	UINT32 SmpRate;
-	UINT16 Volume;
-	UINT8 Resampler;        // Resampler Type: 00 - Old, 01 - Upsampling, 02 - Copy, 03 - Downsampling
-	UINT32 SmpP;            // Current Sample (Playback Rate)
-	UINT32 SmpLast;         // Sample Number Last
-	UINT32 SmpNext;         // Sample Number Next
-	WAVE_32BS LSmpl;        // Last Sample
-	WAVE_32BS NSmpl;        // Next Sample
-} CAUD_ATTR;
-
-typedef struct {
-	UINT32 DataSize;
-	const UINT8 *Data;
-	UINT32 Frequency;
-	UINT16 Volume;
-
-	UINT32 Delta;
-	UINT32 SmplPos;
-	UINT32 SmplFric;    // .16 Friction
-} DAC_STATE;
-
+#include "OPN_DLL.h"
 
 BOOL APIENTRY DllMain(HANDLE hModule, DWORD fdwReason, LPVOID lpReserved);
 
@@ -50,15 +28,17 @@ static void ResampleChipStream(UINT8 ChipID, WAVE_32BS *RetSample, UINT32 Length
 
 static void UpdateDAC(UINT8 ChipID, UINT32 Samples);
 
-
 const UINT32 YM2612_CLOCK = 7670454;
 const UINT32 MAX_CHIPS = 0x10;
 
+extern "C" {
 UINT32 SampleRate;    // Note: also used by some sound cores to determinate the chip sample rate
 
-UINT8 ResampleMode;    // 00 - HQ both, 01 - LQ downsampling, 02 - LQ both
 UINT8 CHIP_SAMPLING_MODE;    // 00 - native, 01 - highest (native/custom), 02 - custom (CHIP_SAMPLE_RATE)
 INT32 CHIP_SAMPLE_RATE;
+}
+
+UINT8 ResampleMode;    // 00 - HQ both, 01 - LQ downsampling, 02 - LQ both
 
 
 static UINT8 OPN_CHIPS;    // also indicates, if DLL is running
@@ -74,8 +54,8 @@ static UINT32 NullSamples;
 
 static CRITICAL_SECTION write_sect;
 
-BOOL APIENTRY DllMain(HANDLE hModule, DWORD fdwReason, LPVOID lpReserved) {
-	switch (fdwReason) {
+BOOL APIENTRY DllMain(HANDLE hModule, DWORD fdwReason, LPVOID lpReserved){
+	switch(fdwReason){
 		case DLL_PROCESS_ATTACH:
 			// Initialize once for each new process.
 			// Return FALSE to fail DLL load.
@@ -88,36 +68,35 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD fdwReason, LPVOID lpReserved) {
 			break;
 		case DLL_PROCESS_DETACH:
 			// Perform any necessary cleanup.
-			if (OPN_CHIPS) {
+			if(OPN_CHIPS){
 				// a special function is called, as waveOutClose hangs the process at this point
 				CloseOPNDriver_Unload();
 			}
 			break;
-		default:
-			break;
+		default: break;
 	}
 
 	return TRUE;
 }
 
-void OPNAPI SetOPNOptions(UINT32 OutSmplRate, UINT8 ResmplMode, UINT8 ChipSmplMode, UINT32 ChipSmplRate) {
+void OPNAPI SetOPNOptions(UINT32 OutSmplRate, UINT8 ResmplMode, UINT8 ChipSmplMode, UINT32 ChipSmplRate){
 	SampleRate = OutSmplRate;
 	ResampleMode = ResmplMode;
 	CHIP_SAMPLING_MODE = ChipSmplMode;
-	CHIP_SAMPLE_RATE = ChipSmplRate;
-
+	CHIP_SAMPLE_RATE = reinterpret_cast<INT32>(ChipSmplRate);
 }
 
-UINT8 OPNAPI OpenOPNDriver(UINT8 Chips) {
-	if (OPN_CHIPS)
-		return 0x80;    // already running
-	if (Chips > 0x10)
+UINT8 OPNAPI OpenOPNDriver(UINT8 Chips){
+	if(OPN_CHIPS){
+		return 0x80;
+	}    // already running
+	if(Chips > 0x10)
 		return 0xFF;    // too many chips
 
 	InitChips(Chips);
 
 	SoundLogging(false);
-	if (StartStream(0x00)) {
+	if(StartStream(0x00)){
 		//printf("Error openning Sound Device!\n");
 		CloseOPNDriver();
 
@@ -130,11 +109,11 @@ UINT8 OPNAPI OpenOPNDriver(UINT8 Chips) {
 	return 0x00;
 }
 
-static void InitChips(UINT8 ChipCount) {
+static void InitChips(UINT8 ChipCount){
 	UINT8 CurChip;
 	CAUD_ATTR *CAA;
 
-	for (CurChip = 0x00; CurChip < MAX_CHIPS; CurChip++) {
+	for(CurChip = 0x00; CurChip < MAX_CHIPS; CurChip++){
 		CAA = &ChipAudio[CurChip];
 		CAA->SmpRate = 0x00;
 		CAA->Volume = 0x00;
@@ -143,38 +122,40 @@ static void InitChips(UINT8 ChipCount) {
 	}
 
 	InitializeCriticalSection(&write_sect);
-	for (CurChip = 0x00; CurChip < ChipCount; CurChip++) {
+	for(CurChip = 0x00; CurChip < ChipCount; CurChip++){
 		CAA = &ChipAudio[CurChip];
 		CAA->SmpRate = device_start_ym2612(CurChip, YM2612_CLOCK);
 		CAA->Volume = 0x100;
 		device_reset_ym2612(CurChip);
 	}
 
-	for (CurChip = 0x00; CurChip < ChipCount; CurChip++) {
+	for(CurChip = 0x00; CurChip < ChipCount; CurChip++){
 		CAA = &ChipAudio[CurChip];
-		if (!CAA->SmpRate)
+		if(!CAA->SmpRate){
 			CAA->Resampler = 0xFF;
-		else if (CAA->SmpRate < SampleRate)
+		}else if(CAA->SmpRate < SampleRate){
 			CAA->Resampler = 0x01;
-		else if (CAA->SmpRate == SampleRate)
+		}else if(CAA->SmpRate == SampleRate){
 			CAA->Resampler = 0x02;
-		else if (CAA->SmpRate > SampleRate)
+		}else if(CAA->SmpRate > SampleRate){
 			CAA->Resampler = 0x03;
-		if ((ResampleMode == OPT_RSMPL_LQ_DOWN && CAA->Resampler == 0x03) ||
-		    ResampleMode == OPT_RSMPL_LOW)
+		}
+		if((ResampleMode == OPT_RSMPL_LQ_DOWN && CAA->Resampler == 0x03) ||
+		   ResampleMode == OPT_RSMPL_LOW){
 			CAA->Resampler = 0x00;
+		}
 
 		CAA->SmpP = 0x00;
 		CAA->SmpLast = 0x00;
 		CAA->SmpNext = 0x00;
 		CAA->LSmpl.Left = 0x00;
 		CAA->LSmpl.Right = 0x00;
-		if (CAA->Resampler == 0x01) {
+		if(CAA->Resampler == 0x01){
 			// Pregenerate first Sample (the upsampler is always one too late)
 			GetChipStream(0x00, CurChip, StreamBufs, 1);
 			CAA->NSmpl.Left = StreamBufs[0x00][0x00];
 			CAA->NSmpl.Right = StreamBufs[0x01][0x00];
-		} else {
+		}else{
 			CAA->NSmpl.Left = 0x00;
 			CAA->NSmpl.Right = 0x00;
 		}
@@ -190,46 +171,48 @@ static void InitChips(UINT8 ChipCount) {
 	OPN_CHIPS = ChipCount;
 }
 
-static void DeinitChips() {
+static void DeinitChips(){
 	UINT8 CurChip;
 
 	free(StreamBufs[0x00]);
 	free(StreamBufs[0x01]);
 
-	for (CurChip = 0x00; CurChip < OPN_CHIPS; CurChip++)
+	for(CurChip = 0x00; CurChip < OPN_CHIPS; CurChip++){
 		device_stop_ym2612(CurChip);
+	}
 	DeleteCriticalSection(&write_sect);
 
 	OPN_CHIPS = 0x00;
 }
 
-
-void OPNAPI CloseOPNDriver() {
+void OPNAPI CloseOPNDriver(){
 	StopStream(false);
 
 	DeinitChips();
 }
 
-void CloseOPNDriver_Unload() {
+void CloseOPNDriver_Unload(){
 	StopStream(true);
 
 	DeinitChips();
 }
 
-void OPNAPI OPN_Write(UINT8 ChipID, UINT16 Register, UINT8 Data) {
+void OPNAPI OPN_Write(UINT8 ChipID, UINT16 Register, UINT8 Data){
 	UINT8 RegSet;
-	if (ChipID >= OPN_CHIPS)
+	if(ChipID >= OPN_CHIPS){
 		return;
+	}
 
 	EnterCriticalSection(&write_sect);
-	if (Register == 0x28 && (Data & 0xF0)) {
+	if(Register == 0x28 && (Data & 0xF0)){
 		// Note On - Resume Stream
 		NullSamples = 0;
 		PauseStream(false);
 	}
 
-	if (NullSamples == 0xFFFFFFFF)    // if chip is paused, do safe update
+	if(NullSamples == 0xFFFFFFFF){    // if chip is paused, do safe update
 		GetChipStream(0x00, ChipID, StreamBufs, 1);
+	}
 
 	RegSet = Register >> 8;
 	ym2612_w(ChipID, 0x00 | (RegSet << 1), Register & 0xFF);
@@ -237,28 +220,31 @@ void OPNAPI OPN_Write(UINT8 ChipID, UINT16 Register, UINT8 Data) {
 	LeaveCriticalSection(&write_sect);
 }
 
-void OPNAPI OPN_Mute(UINT8 ChipID, UINT8 MuteMask) {
-	if (ChipID >= OPN_CHIPS)
+void OPNAPI OPN_Mute(UINT8 ChipID, UINT8 MuteMask){
+	if(ChipID >= OPN_CHIPS){
 		return;
+	}
 
 	EnterCriticalSection(&write_sect);
 	ym2612_set_mute_mask(ChipID, MuteMask);
 	LeaveCriticalSection(&write_sect);
 }
 
-INLINE INT16 Limit2Short(INT32 Value) {
+INLINE INT16 Limit2Short(INT32 Value){
 	INT32 NewValue;
 
 	NewValue = Value;
-	if (NewValue < -0x8000)
+	if(NewValue < -0x8000){
 		NewValue = -0x8000;
-	if (NewValue > 0x7FFF)
+	}
+	if(NewValue > 0x7FFF){
 		NewValue = 0x7FFF;
+	}
 
 	return (INT16) NewValue;
 }
 
-INLINE void GetChipStream(UINT8 ChipID, UINT8 ChipNum, INT32 **Buffer, UINT32 BufSize) {
+INLINE void GetChipStream(UINT8 ChipID, UINT8 ChipNum, INT32 **Buffer, UINT32 BufSize){
 	ym2612_stream_update(ChipNum, Buffer, BufSize);
 }
 
@@ -272,31 +258,31 @@ typedef UINT64	SLINT;
 #endif
 const UINT32 FIXPNT_MASK = FIXPNT_FACT - 1;
 
-INLINE UINT32 getfriction(UINT32 x) {
+INLINE UINT32 getfriction(UINT32 x){
 	return x & FIXPNT_MASK;
 }
 
-INLINE UINT32 getnfriction(UINT32 x) {
+INLINE UINT32 getnfriction(UINT32 x){
 	return (FIXPNT_FACT - x) & FIXPNT_MASK;
 }
 
-INLINE UINT32 fpi_floor(UINT32 x) {
+INLINE UINT32 fpi_floor(UINT32 x){
 	return (x) & ~FIXPNT_MASK;
 }
 
-INLINE UINT32 fpi_ceil(UINT32 x) {
+INLINE UINT32 fpi_ceil(UINT32 x){
 	return (x + FIXPNT_MASK) & ~FIXPNT_MASK;
 }
 
-INLINE UINT32 fp2i_floor(UINT32 x) {
+INLINE UINT32 fp2i_floor(UINT32 x){
 	return (x) / FIXPNT_FACT;
 }
 
-INLINE UINT32 fp2i_ceil(UINT32 x) {
+INLINE UINT32 fp2i_ceil(UINT32 x){
 	return (x + FIXPNT_MASK) / FIXPNT_FACT;
 }
 
-static void ResampleChipStream(UINT8 ChipID, WAVE_32BS *RetSample, UINT32 Length) {
+static void ResampleChipStream(UINT8 ChipID, WAVE_32BS *RetSample, UINT32 Length){
 	UINT8 ChipNum;
 	UINT8 ChipIDP;    // ChipID with Paired flag
 	CAUD_ATTR *CAA;
@@ -329,34 +315,34 @@ static void ResampleChipStream(UINT8 ChipID, WAVE_32BS *RetSample, UINT32 Length
 	// It's a loop to support the AY8910 paired with the YM2203/YM2608/YM2610.
 	//do
 	//{
-	switch (CAA->Resampler) {
+	switch(CAA->Resampler){
 		case 0x00:    // old, but very fast resampler
 			CAA->SmpLast = CAA->SmpNext;
 			CAA->SmpP += Length;
 			CAA->SmpNext = (UINT32) ((UINT64) CAA->SmpP * CAA->SmpRate / SampleRate);
-			if (CAA->SmpLast >= CAA->SmpNext) {
+			if(CAA->SmpLast >= CAA->SmpNext){
 				RetSample->Left += CAA->LSmpl.Left * CAA->Volume;
 				RetSample->Right += CAA->LSmpl.Right * CAA->Volume;
-			} else {
+			}else{
 				SmpCnt = CAA->SmpNext - CAA->SmpLast;
 
 				GetChipStream(ChipIDP, ChipNum, StreamBufs, SmpCnt);
 
-				if (SmpCnt == 1) {
+				if(SmpCnt == 1){
 					RetSample->Left += CurBufL[0x00] * CAA->Volume;
 					RetSample->Right += CurBufR[0x00] * CAA->Volume;
 					CAA->LSmpl.Left = CurBufL[0x00];
 					CAA->LSmpl.Right = CurBufR[0x00];
-				} else if (SmpCnt == 2) {
+				}else if(SmpCnt == 2){
 					RetSample->Left += (CurBufL[0x00] + CurBufL[0x01]) * CAA->Volume >> 1;
 					RetSample->Right += (CurBufR[0x00] + CurBufR[0x01]) * CAA->Volume >> 1;
 					CAA->LSmpl.Left = CurBufL[0x01];
 					CAA->LSmpl.Right = CurBufR[0x01];
-				} else {
+				}else{
 					// I'm using InPos
 					TempS32L = CurBufL[0x00];
 					TempS32R = CurBufR[0x00];
-					for (CurSmpl = 0x01; CurSmpl < SmpCnt; CurSmpl++) {
+					for(CurSmpl = 0x01; CurSmpl < SmpCnt; CurSmpl++){
 						TempS32L += CurBufL[CurSmpl];
 						TempS32R += CurBufR[CurSmpl];
 					}
@@ -385,7 +371,7 @@ static void ResampleChipStream(UINT8 ChipID, WAVE_32BS *RetSample, UINT32 Length
 			SmpCnt = FIXPNT_FACT;
 			CAA->SmpLast = InPre;
 			CAA->SmpNext = InNow;
-			for (OutPos = 0x00; OutPos < Length; OutPos++) {
+			for(OutPos = 0x00; OutPos < Length; OutPos++){
 				InPos = InBase + (UINT32) (FIXPNT_FACT * OutPos * ChipSmpRate / SampleRate);
 
 				InPre = fp2i_floor(InPos);
@@ -410,7 +396,7 @@ static void ResampleChipStream(UINT8 ChipID, WAVE_32BS *RetSample, UINT32 Length
 			CAA->SmpNext = CAA->SmpP * CAA->SmpRate / SampleRate;
 			GetChipStream(ChipIDP, ChipNum, StreamBufs, Length);
 
-			for (OutPos = 0x00; OutPos < Length; OutPos++) {
+			for(OutPos = 0x00; OutPos < Length; OutPos++){
 				RetSample[OutPos].Left += CurBufL[OutPos] * CAA->Volume;
 				RetSample[OutPos].Right += CurBufR[OutPos] * CAA->Volume;
 			}
@@ -432,18 +418,18 @@ static void ResampleChipStream(UINT8 ChipID, WAVE_32BS *RetSample, UINT32 Length
 			// I'm adding 1.0 to avoid negative indexes
 			InBase = FIXPNT_FACT + (UINT32) (InPosL - (SLINT) CAA->SmpLast * FIXPNT_FACT);
 			InPosNext = InBase;
-			for (OutPos = 0x00; OutPos < Length; OutPos++) {
+			for(OutPos = 0x00; OutPos < Length; OutPos++){
 				//InPos = InBase + (UINT32)(FIXPNT_FACT * OutPos * ChipSmpRate / SampleRate);
 				InPos = InPosNext;
 				InPosNext = InBase + (UINT32) (FIXPNT_FACT * (OutPos + 1) * ChipSmpRate / SampleRate);
 
 				// first frictional Sample
 				SmpFrc = getnfriction(InPos);
-				if (SmpFrc) {
+				if(SmpFrc){
 					InPre = fp2i_floor(InPos);
 					TempSmpL = (INT64) CurBufL[InPre] * SmpFrc;
 					TempSmpR = (INT64) CurBufR[InPre] * SmpFrc;
-				} else {
+				}else{
 					TempSmpL = TempSmpR = 0x00;
 				}
 				SmpCnt = SmpFrc;
@@ -451,7 +437,7 @@ static void ResampleChipStream(UINT8 ChipID, WAVE_32BS *RetSample, UINT32 Length
 				// last frictional Sample
 				SmpFrc = getfriction(InPosNext);
 				InPre = fp2i_floor(InPosNext);
-				if (SmpFrc) {
+				if(SmpFrc){
 					TempSmpL += (INT64) CurBufL[InPre] * SmpFrc;
 					TempSmpR += (INT64) CurBufR[InPre] * SmpFrc;
 					SmpCnt += SmpFrc;
@@ -461,7 +447,7 @@ static void ResampleChipStream(UINT8 ChipID, WAVE_32BS *RetSample, UINT32 Length
 				//InPre = fp2i_floor(InPosNext);
 				InNow = fp2i_ceil(InPos);
 				SmpCnt += (InPre - InNow) * FIXPNT_FACT;    // this is faster
-				while (InNow < InPre) {
+				while(InNow < InPre){
 					TempSmpL += (INT64) CurBufL[InNow] * FIXPNT_FACT;
 					TempSmpR += (INT64) CurBufR[InNow] * FIXPNT_FACT;
 					//SmpCnt ++;
@@ -477,66 +463,69 @@ static void ResampleChipStream(UINT8 ChipID, WAVE_32BS *RetSample, UINT32 Length
 			CAA->SmpP += Length;
 			CAA->SmpLast = CAA->SmpNext;
 			break;
-		default:
-			return;    // do absolutely nothing
+		default: return;    // do absolutely nothing
 	}
 
-	if (CAA->SmpLast >= CAA->SmpRate) {
+	if(CAA->SmpLast >= CAA->SmpRate){
 		CAA->SmpLast -= CAA->SmpRate;
 		CAA->SmpNext -= CAA->SmpRate;
 		CAA->SmpP -= SampleRate;
 	}
 }
 
-void FillBuffer(WAVE_16BS *Buffer, UINT32 BufferSize) {
+void FillBuffer(WAVE_16BS *Buffer, UINT32 BufferSize){
 	UINT32 CurSmpl;
 	WAVE_32BS TempBuf;
 	UINT8 CurChip;
 
-	if (Buffer == nullptr)
+	if(Buffer == nullptr){
 		return;
+	}
 
 	EnterCriticalSection(&write_sect);
-	for (CurSmpl = 0x00; CurSmpl < BufferSize; CurSmpl++) {
+	for(CurSmpl = 0x00; CurSmpl < BufferSize; CurSmpl++){
 		TempBuf.Left = 0x00;
 		TempBuf.Right = 0x00;
 
-		for (CurChip = 0x00; CurChip < OPN_CHIPS; CurChip++)
+		for(CurChip = 0x00; CurChip < OPN_CHIPS; CurChip++){
 			UpdateDAC(CurChip, 1);
-		for (CurChip = 0x00; CurChip < OPN_CHIPS; CurChip++)
+		}
+		for(CurChip = 0x00; CurChip < OPN_CHIPS; CurChip++){
 			ResampleChipStream(CurChip, &TempBuf, 1);
+		}
 
 		TempBuf.Left = TempBuf.Left >> 7;
 		TempBuf.Right = TempBuf.Right >> 7;
-		if (!TempBuf.Left && !TempBuf.Right)
+		if(!TempBuf.Left && !TempBuf.Right){
 			NullSamples++;
+		}
 		Buffer[CurSmpl].Left = Limit2Short(TempBuf.Left);
 		Buffer[CurSmpl].Right = Limit2Short(TempBuf.Right);
 	}
 
-	if (NullSamples >= SampleRate) {
+	if(NullSamples >= SampleRate){
 		NullSamples = 0xFFFFFFFF;
 		PauseStream(true);    // stop the stream if chip isn't used
 	}
 	LeaveCriticalSection(&write_sect);
 }
 
-
-static void UpdateDAC(UINT8 ChipID, UINT32 Samples) {
+static void UpdateDAC(UINT8 ChipID, UINT32 Samples){
 	DAC_STATE *TempDAC;
 	UINT32 RemDelta;
 	INT32 SmplData;
 
 	TempDAC = &DACState[ChipID];
-	if (TempDAC->Data == nullptr)
+	if(TempDAC->Data == nullptr){
 		return;
+	}
 
 	RemDelta = TempDAC->Delta * Samples;
 	TempDAC->SmplFric += TempDAC->Delta * Samples;
-	if (TempDAC->SmplFric & 0xFFFF0000) {
+	if(TempDAC->SmplFric & 0xFFFF0000){
 		TempDAC->SmplPos += (TempDAC->SmplFric >> 16);
 		TempDAC->SmplFric &= 0x0000FFFF;
-		if (TempDAC->SmplPos >= TempDAC->DataSize) {
+		if(TempDAC->SmplPos >= TempDAC->DataSize){
 			TempDAC->Data = nullptr;
 			ym2612_w(ChipID, 0x00, 0x2A);
 			ym2612_w(ChipID, 0x01, 0x80);
@@ -544,39 +533,42 @@ static void UpdateDAC(UINT8 ChipID, UINT32 Samples) {
 		}
 
 		ym2612_w(ChipID, 0x00, 0x2A);
-		if (TempDAC->Volume == 0x100) {
+		if(TempDAC->Volume == 0x100){
 			ym2612_w(ChipID, 0x01, TempDAC->Data[TempDAC->SmplPos]);
-		} else {
+		}else{
 			SmplData = TempDAC->Data[TempDAC->SmplPos] - 0x80;    // 00..80..FF -> -80..00..+7F
 			SmplData *= TempDAC->Volume;
 			SmplData = (SmplData + 0x80) >> 8;    // +0x80 for proper rounding
-			if (SmplData < -0x80)
+			if(SmplData < -0x80){
 				SmplData = -0x80;
-			else if (SmplData > 0x7F)
+			}else if(SmplData > 0x7F){
 				SmplData = 0x7F;
+			}
 			ym2612_w(ChipID, 0x01, (UINT8) (SmplData + 0x80));    // YM2612 takes 00..FF
 		}
 		NullSamples = 0;    // keep everything running while the DAC is playing
 	}
 }
 
-INLINE UINT32 MulDivRoundU(UINT64 Mul1, UINT64 Mul2, UINT64 Div) {
+INLINE UINT32 MulDivRoundU(UINT64 Mul1, UINT64 Mul2, UINT64 Div){
 	return (Mul1 * Mul2 + Div / 2) / Div;
 }
 
-void OPNAPI PlayDACSample(UINT8 ChipID, UINT32 DataSize, const UINT8 *Data, UINT32 SmplFreq) {
+void OPNAPI PlayDACSample(UINT8 ChipID, UINT32 DataSize, const UINT8 *Data, UINT32 SmplFreq){
 	DAC_STATE *TempDAC;
 
-	if (ChipID >= OPN_CHIPS)
+	if(ChipID >= OPN_CHIPS){
 		return;
+	}
 
 	EnterCriticalSection(&write_sect);
 
 	TempDAC = &DACState[ChipID];
 	TempDAC->DataSize = DataSize;
 	TempDAC->Data = Data;
-	if (SmplFreq)
+	if(SmplFreq){
 		TempDAC->Frequency = SmplFreq;
+	}
 	TempDAC->Delta = MulDivRoundU(0x10000, TempDAC->Frequency, SampleRate);
 	TempDAC->SmplPos = 0x00;
 
@@ -586,22 +578,24 @@ void OPNAPI PlayDACSample(UINT8 ChipID, UINT32 DataSize, const UINT8 *Data, UINT
 	LeaveCriticalSection(&write_sect);
 }
 
-void OPNAPI SetDACFrequency(UINT8 ChipID, UINT32 SmplFreq) {
+void OPNAPI SetDACFrequency(UINT8 ChipID, UINT32 SmplFreq){
 	DAC_STATE *TempDAC;
 
-	if (ChipID >= OPN_CHIPS)
+	if(ChipID >= OPN_CHIPS){
 		return;
+	}
 
 	TempDAC = &DACState[ChipID];
 	TempDAC->Frequency = SmplFreq;
 	TempDAC->Delta = MulDivRoundU(0x10000, TempDAC->Frequency, SampleRate);
 }
 
-void OPNAPI SetDACVolume(UINT8 ChipID, UINT16 Volume) {
+void OPNAPI SetDACVolume(UINT8 ChipID, UINT16 Volume){
 	DAC_STATE *TempDAC;
 
-	if (ChipID >= OPN_CHIPS)
+	if(ChipID >= OPN_CHIPS){
 		return;
+	}
 
 	TempDAC = &DACState[ChipID];
 	TempDAC->Volume = Volume;
