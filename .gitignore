@@ -551,3 +551,5 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# standard cmake build folders
+cmake-build*/
