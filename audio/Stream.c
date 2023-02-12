@@ -2,9 +2,7 @@
 //
 
 #include <stdio.h>
-#include "include/stdbool.h"
-#include <malloc.h>
-
+#include <stdbool.h>
 #include <Windows.h>
 
 #include "ym2612/mamedef.h"    // for UINT8 etc.
@@ -31,7 +29,7 @@ static bool WaveOutOpen;
 UINT32 BUFFERSIZE;    // Buffer Size in Bytes
 UINT32 SMPL_P_BUFFER;
 static char BufferOut[AUDIOBUFFERS][BUFSIZE_MAX];
-static bool CloseThread;
+static volatile bool CloseThread;
 
 bool SoundLog;
 static FILE *hFile;
@@ -83,6 +81,7 @@ UINT8 SaveFile(UINT32 FileLen, void *TempData){
 				fclose(hFile);
 				hFile = NULL;
 				break;
+			default: break;
 		}
 	}else{
 		//fseek(hFile, 0x00000000, SEEK_END);
