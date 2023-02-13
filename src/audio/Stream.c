@@ -5,42 +5,41 @@
 #include <stdbool.h>
 #include <windows.h>
 
-#include "ym2612/mamedef.h"    // for UINT8 etc.
 #include "Stream.h"
 
 static DWORD WINAPI WaveOutThread(void *Arg);
 
 static void BufCheck(void);
 
-UINT16 AUDIOBUFFERU = 10;        // used AudioBuffers
+uint16_t AUDIOBUFFERU = 10;        // used AudioBuffers
 
 WAVEFORMATEX WaveFmt;
-extern UINT32 SampleRate;
+extern uint32_t SampleRate;
 bool PauseThread;
-extern bool ThreadPauseConfrm;
+//extern bool ThreadPauseConfrm;
 
-UINT32 BlockLen;
+//uint32_t BlockLen;
 static HWAVEOUT hWaveOut;
 static WAVEHDR WaveHdrOut[AUDIOBUFFERS];
 static HANDLE hWaveOutThread;
 //static DWORD WaveOutCallbackThrID;
 
 static bool WaveOutOpen;
-UINT32 BUFFERSIZE;    // Buffer Size in Bytes
-UINT32 SMPL_P_BUFFER;
+uint32_t BUFFERSIZE;    // Buffer Size in Bytes
+uint32_t SMPL_P_BUFFER;
 static char BufferOut[AUDIOBUFFERS][BUFSIZE_MAX];
 static volatile bool CloseThread;
 
 bool SoundLog;
 static FILE *hFile;
-UINT32 SndLogLen;
+uint32_t SndLogLen;
 
-UINT32 BlocksSent;
-UINT32 BlocksPlayed;
+uint32_t BlocksSent;
+uint32_t BlocksPlayed;
 
 char SoundLogFile[MAX_PATH];
 
-UINT8 SaveFile(UINT32 FileLen, void *TempData){
+uint8_t SaveFile(uint32_t FileLen, void *TempData){
 	//char ResultStr[0x100];
 	long int TempVal[0x2];
 
@@ -96,10 +95,10 @@ UINT8 SaveFile(UINT32 FileLen, void *TempData){
 	return 0x00;
 }
 
-UINT8 SoundLogging(UINT8 Mode){
-	UINT8 RetVal;
+uint8_t SoundLogging(uint8_t Mode){
+	uint8_t RetVal;
 
-	RetVal = (UINT8) SoundLog;
+	RetVal = (uint8_t) SoundLog;
 	switch(Mode){
 		case 0x00: SoundLog = false;
 			break;
@@ -116,9 +115,9 @@ UINT8 SoundLogging(UINT8 Mode){
 	return RetVal;
 }
 
-UINT8 StartStream(UINT8 DeviceID){
-	UINT32 RetVal;
-	UINT16 Cnt;
+uint8_t StartStream(uint8_t DeviceID){
+	uint32_t RetVal;
+	uint16_t Cnt;
 	HANDLE WaveOutThreadHandle;
 	DWORD WaveOutThreadID;
 	//char TestStr[0x80];
@@ -174,7 +173,8 @@ UINT8 StartStream(UINT8 DeviceID){
 		WaveHdrOut[Cnt].dwLoops = 0x00;
 		WaveHdrOut[Cnt].lpNext = NULL;
 		WaveHdrOut[Cnt].reserved = 0x00;
-		RetVal = waveOutPrepareHeader(hWaveOut, &WaveHdrOut[Cnt], sizeof(WAVEHDR));
+		//RetVal =
+		waveOutPrepareHeader(hWaveOut, &WaveHdrOut[Cnt], sizeof(WAVEHDR));
 		WaveHdrOut[Cnt].dwFlags |= WHDR_DONE;
 	}
 
@@ -187,9 +187,9 @@ UINT8 StartStream(UINT8 DeviceID){
 	return 0x00;
 }
 
-UINT8 StopStream(bool SkipWOClose){
-	UINT32 RetVal;
-	UINT16 Cnt;
+uint8_t StopStream(bool SkipWOClose){
+	uint32_t RetVal;
+	uint16_t Cnt;
 
 	if(!WaveOutOpen){
 		return 0xD8;
@@ -222,7 +222,7 @@ UINT8 StopStream(bool SkipWOClose){
 }
 
 void PauseStream(bool PauseOn){
-	//UINT32 RetVal;
+	//uint32_t RetVal;
 
 	if(!WaveOutOpen){
 		return;
@@ -242,9 +242,9 @@ void PauseStream(bool PauseOn){
 
 static DWORD WINAPI WaveOutThread(void *Arg){
 #ifdef NDEBUG
-	UINT32 RetVal;
+	uint32_t RetVal;
 #endif
-	UINT16 CurBuf;
+	uint16_t CurBuf;
 	WAVE_16BS *TempBuf;
 	//char TestStr[0x80];
 
@@ -297,7 +297,7 @@ static DWORD WINAPI WaveOutThread(void *Arg){
 }
 
 static void BufCheck(void){
-	UINT16 CurBuf;
+	uint16_t CurBuf;
 
 	for(CurBuf = 0x00; CurBuf < AUDIOBUFFERU; CurBuf++){
 		if(WaveHdrOut[CurBuf].dwFlags & WHDR_DONE){
