@@ -8,12 +8,17 @@ include_directories(.)
 
 set(ym2612Srcs
 		ym2612/2612intf.c
+		ym2612/2612intf.h
 		ym2612/fm2612.c
+		ym2612/fm.h
+		ym2612/mamedef.h
 		)
 
 add_library(OPN SHARED
         OPN_DLL.cpp
+		OPN_DLL.hpp
         audio/Stream.c
+		audio/Stream.h
 		${ym2612Srcs})
 
 add_executable(libOPNTest Tests/OPNTest.cpp)

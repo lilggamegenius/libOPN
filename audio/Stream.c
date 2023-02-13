@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
-#include <Windows.h>
+#include <windows.h>
 
 #include "ym2612/mamedef.h"    // for UINT8 etc.
 #include "Stream.h"

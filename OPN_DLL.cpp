@@ -9,8 +9,9 @@ extern "C" {
 #include "ym2612/2612intf.h"
 }
 
-//#include <malloc.h>
-//#include <Windows.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#undef WIN32_LEAN_AND_MEAN
 
 bool APIENTRY DllMain(HANDLE hModule, DWORD fdwReason, LPVOID lpReserved);
 
