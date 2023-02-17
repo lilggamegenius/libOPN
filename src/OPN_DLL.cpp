@@ -7,12 +7,13 @@ extern "C" {
 #include "src/ym2612/2612intf.h"
 }
 
+#include <mutex>
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #undef WIN32_LEAN_AND_MEAN
 
 constexpr uint32_t YM2612_CLOCK = 7670454;
-constexpr uint32_t MAX_CHIPS = 0x10;
 
 extern "C" {
 uint32_t SampleRate = 44100;    // Note: also used by some sound cores to determinate the chip sample rate
@@ -36,7 +37,8 @@ stream_sample_t *DUMMYBUF[0x02] = {nullptr, nullptr};
 
 static uint32_t NullSamples;
 
-static CRITICAL_SECTION write_sect;
+//static CRITICAL_SECTION write_sect;
+static std::mutex writeGuard;
 
 static void DeinitChips(){
 	uint8_t CurChip;
@@ -47,7 +49,8 @@ static void DeinitChips(){
 	for(CurChip = 0x00; CurChip < OPN_CHIPS; CurChip++){
 		device_stop_ym2612(CurChip);
 	}
-	DeleteCriticalSection(&write_sect);
+	//DeleteCriticalSection(&write_sect);
+
 
 	OPN_CHIPS = 0x00;
 }
@@ -87,8 +90,8 @@ void SetOPNOptions(uint32_t OutSmplRate, ResampleMode ResmplMode, ChipSampleMode
 	CHIP_SAMPLE_RATE = static_cast<int32_t>(ChipSmplRate);
 }
 
-INLINE void GetChipStream([[maybe_unused]] uint8_t ChipID, uint8_t ChipNum, int32_t **Buffer, uint32_t BufSize){
-	ym2612_stream_update(ChipNum, Buffer, BufSize);
+INLINE void GetChipStream(uint8_t ChipID, int32_t **Buffer, uint32_t BufSize){
+	ym2612_stream_update(ChipID, Buffer, BufSize);
 }
 
 static void InitChips(uint8_t ChipCount){
@@ -103,7 +106,7 @@ static void InitChips(uint8_t ChipCount){
 		DACStates[CurChip].Data = nullptr;
 	}
 
-	InitializeCriticalSection(&write_sect);
+	//InitializeCriticalSection(&write_sect);
 	for(CurChip = 0x00; CurChip < ChipCount; CurChip++){
 		CAA = &ChipAudio[CurChip];
 		CAA->SmpRate = device_start_ym2612(CurChip, YM2612_CLOCK);
@@ -134,7 +137,7 @@ static void InitChips(uint8_t ChipCount){
 		CAA->LSmpl.Right = 0x00;
 		if(CAA->Resampler == 0x01){
 			// Pregenerate first Sample (the upsampler is always one too late)
-			GetChipStream(0x00, CurChip, StreamBufs, 1);
+			GetChipStream(CurChip, StreamBufs, 1);
 			CAA->NSmpl.Left = StreamBufs[0x00][0x00];
 			CAA->NSmpl.Right = StreamBufs[0x01][0x00];
 		}else{
@@ -156,7 +159,7 @@ static void InitChips(uint8_t ChipCount){
 DriverReturnCode OpenOPNDriver(uint8_t Chips){
 	using enum DriverReturnCode;
 	if(OPN_CHIPS){
-		return ZeroChipCount;
+		return DriverAlreadyInitalized;
 	}    // already running
 	if(Chips > 0x10){
 		return TooManyChips;    // too many chips
@@ -185,12 +188,12 @@ void CloseOPNDriver(){
 }
 
 void OPN_Write(uint8_t ChipID, uint16_t Register, uint8_t Data){
-	uint8_t RegSet;
 	if(ChipID >= OPN_CHIPS){
 		return;
 	}
 
-	EnterCriticalSection(&write_sect);
+	const std::lock_guard<std::mutex> lock(writeGuard);
+	//EnterCriticalSection(&write_sect);
 	if(Register == 0x28 && (Data & 0xF0)){
 		// Note On - Resume Stream
 		NullSamples = 0;
@@ -198,13 +201,13 @@ void OPN_Write(uint8_t ChipID, uint16_t Register, uint8_t Data){
 	}
 
 	if(NullSamples == 0xFFFFFFFF){    // if chip is paused, do safe update
-		GetChipStream(0x00, ChipID, StreamBufs, 1);
+		GetChipStream(ChipID, StreamBufs, 1);
 	}
 
-	RegSet = Register >> 8;
+	uint8_t RegSet = Register >> 8;
 	ym2612_w(ChipID, 0x00 | (RegSet << 1), Register & 0xFF);
 	ym2612_w(ChipID, 0x01 | (RegSet << 1), Data);
-	LeaveCriticalSection(&write_sect);
+	//LeaveCriticalSection(&write_sect);
 }
 
 void OPN_Mute(uint8_t ChipID, uint8_t MuteMask){
@@ -212,9 +215,10 @@ void OPN_Mute(uint8_t ChipID, uint8_t MuteMask){
 		return;
 	}
 
-	EnterCriticalSection(&write_sect);
+	const std::lock_guard<std::mutex> lock(writeGuard);
+	//EnterCriticalSection(&write_sect);
 	ym2612_set_mute_mask(ChipID, MuteMask);
-	LeaveCriticalSection(&write_sect);
+	//LeaveCriticalSection(&write_sect);
 }
 
 INLINE int16_t Limit2Short(int32_t Value){
@@ -270,13 +274,13 @@ static void ResampleChipStream(uint8_t ChipNum, WAVE_32BS *RetSample, uint32_t L
 	uint32_t InPre;
 	uint32_t InNow;
 	SLINT InPosL;
-	INT64 TempSmpL;
-	INT64 TempSmpR;
+	int64_t TempSmpL;
+	int64_t TempSmpR;
 	int32_t TempS32L;
 	int32_t TempS32R;
 	int32_t SmpCnt;    // must be signed, else I'm getting calculation errors
 	int32_t CurSmpl;
-	UINT64 ChipSmpRate;
+	uint64_t ChipSmpRate;
 
 	uint8_t ChipIDP = 0x00; // ChipID with Paired flag
 	ChipAudioAttributes *CAA = (ChipAudioAttributes *) &ChipAudio[ChipNum] + ChipIDP;
@@ -292,14 +296,14 @@ static void ResampleChipStream(uint8_t ChipNum, WAVE_32BS *RetSample, uint32_t L
 		case 0x00:    // old, but very fast resampler
 			CAA->SmpLast = CAA->SmpNext;
 			CAA->SmpP += Length;
-			CAA->SmpNext = (uint32_t) ((UINT64) CAA->SmpP * CAA->SmpRate / SampleRate);
+			CAA->SmpNext = (uint32_t) ((uint64_t) CAA->SmpP * CAA->SmpRate / SampleRate);
 			if(CAA->SmpLast >= CAA->SmpNext){
 				RetSample->Left += CAA->LSmpl.Left * CAA->Volume;
 				RetSample->Right += CAA->LSmpl.Right * CAA->Volume;
 			}else{
 				SmpCnt = CAA->SmpNext - CAA->SmpLast;
 
-				GetChipStream(ChipIDP, ChipNum, StreamBufs, SmpCnt);
+				GetChipStream(ChipNum, StreamBufs, SmpCnt);
 
 				if(SmpCnt == 1){
 					RetSample->Left += CurBufL[0x00] * CAA->Volume;
@@ -338,7 +342,7 @@ static void ResampleChipStream(uint8_t ChipNum, WAVE_32BS *RetSample, uint32_t L
 			CurBufR[0x01] = CAA->NSmpl.Right;
 			StreamPnt[0x00] = &CurBufL[0x02];
 			StreamPnt[0x01] = &CurBufR[0x02];
-			GetChipStream(ChipIDP, ChipNum, StreamPnt, InNow - CAA->SmpNext);
+			GetChipStream(ChipNum, StreamPnt, InNow - CAA->SmpNext);
 
 			InBase = FIXPNT_FACT + (uint32_t) (InPosL - (SLINT) CAA->SmpNext * FIXPNT_FACT);
 			SmpCnt = FIXPNT_FACT;
@@ -352,10 +356,10 @@ static void ResampleChipStream(uint8_t ChipNum, WAVE_32BS *RetSample, uint32_t L
 				SmpFrc = getfriction(InPos);
 
 				// Linear interpolation
-				TempSmpL = ((INT64) CurBufL[InPre] * (FIXPNT_FACT - SmpFrc)) +
-				           ((INT64) CurBufL[InNow] * SmpFrc);
-				TempSmpR = ((INT64) CurBufR[InPre] * (FIXPNT_FACT - SmpFrc)) +
-				           ((INT64) CurBufR[InNow] * SmpFrc);
+				TempSmpL = ((int64_t) CurBufL[InPre] * (FIXPNT_FACT - SmpFrc)) +
+				           ((int64_t) CurBufL[InNow] * SmpFrc);
+				TempSmpR = ((int64_t) CurBufR[InPre] * (FIXPNT_FACT - SmpFrc)) +
+				           ((int64_t) CurBufR[InNow] * SmpFrc);
 				RetSample[OutPos].Left += (int32_t) (TempSmpL * CAA->Volume / SmpCnt);
 				RetSample[OutPos].Right += (int32_t) (TempSmpR * CAA->Volume / SmpCnt);
 			}
@@ -367,7 +371,7 @@ static void ResampleChipStream(uint8_t ChipNum, WAVE_32BS *RetSample, uint32_t L
 			break;
 		case 0x02:    // Copying
 			CAA->SmpNext = CAA->SmpP * CAA->SmpRate / SampleRate;
-			GetChipStream(ChipIDP, ChipNum, StreamBufs, Length);
+			GetChipStream(ChipNum, StreamBufs, Length);
 
 			for(OutPos = 0x00; OutPos < Length; OutPos++){
 				RetSample[OutPos].Left += CurBufL[OutPos] * CAA->Volume;
@@ -385,7 +389,7 @@ static void ResampleChipStream(uint8_t ChipNum, WAVE_32BS *RetSample, uint32_t L
 			CurBufR[0x00] = CAA->LSmpl.Right;
 			StreamPnt[0x00] = &CurBufL[0x01];
 			StreamPnt[0x01] = &CurBufR[0x01];
-			GetChipStream(ChipIDP, ChipNum, StreamPnt, CAA->SmpNext - CAA->SmpLast);
+			GetChipStream(ChipNum, StreamPnt, CAA->SmpNext - CAA->SmpLast);
 
 			InPosL = (SLINT) (FIXPNT_FACT * CAA->SmpP * ChipSmpRate / SampleRate);
 			// I'm adding 1.0 to avoid negative indexes
@@ -401,8 +405,8 @@ static void ResampleChipStream(uint8_t ChipNum, WAVE_32BS *RetSample, uint32_t L
 				SmpFrc = getnfriction(InPos);
 				if(SmpFrc){
 					InPre = fp2i_floor(InPos);
-					TempSmpL = (INT64) CurBufL[InPre] * SmpFrc;
-					TempSmpR = (INT64) CurBufR[InPre] * SmpFrc;
+					TempSmpL = (int64_t) CurBufL[InPre] * SmpFrc;
+					TempSmpR = (int64_t) CurBufR[InPre] * SmpFrc;
 				}else{
 					TempSmpL = TempSmpR = 0x00;
 				}
@@ -412,8 +416,8 @@ static void ResampleChipStream(uint8_t ChipNum, WAVE_32BS *RetSample, uint32_t L
 				SmpFrc = getfriction(InPosNext);
 				InPre = fp2i_floor(InPosNext);
 				if(SmpFrc){
-					TempSmpL += (INT64) CurBufL[InPre] * SmpFrc;
-					TempSmpR += (INT64) CurBufR[InPre] * SmpFrc;
+					TempSmpL += (int64_t) CurBufL[InPre] * SmpFrc;
+					TempSmpR += (int64_t) CurBufR[InPre] * SmpFrc;
 					SmpCnt += SmpFrc;
 				}
 
@@ -422,8 +426,8 @@ static void ResampleChipStream(uint8_t ChipNum, WAVE_32BS *RetSample, uint32_t L
 				InNow = fp2i_ceil(InPos);
 				SmpCnt += (InPre - InNow) * FIXPNT_FACT;    // this is faster
 				while(InNow < InPre){
-					TempSmpL += (INT64) CurBufL[InNow] * FIXPNT_FACT;
-					TempSmpR += (INT64) CurBufR[InNow] * FIXPNT_FACT;
+					TempSmpL += (int64_t) CurBufL[InNow] * FIXPNT_FACT;
+					TempSmpR += (int64_t) CurBufR[InNow] * FIXPNT_FACT;
 					//SmpCnt ++;
 					InNow++;
 				}
@@ -496,7 +500,8 @@ void FillBuffer(WAVE_16BS *Buffer, uint32_t BufferSize){
 		return;
 	}
 
-	EnterCriticalSection(&write_sect);
+	const std::lock_guard<std::mutex> lock(writeGuard);
+	//EnterCriticalSection(&write_sect);
 	for(CurSmpl = 0x00; CurSmpl < BufferSize; CurSmpl++){
 		TempBuf.Left = 0x00;
 		TempBuf.Right = 0x00;
@@ -521,10 +526,10 @@ void FillBuffer(WAVE_16BS *Buffer, uint32_t BufferSize){
 		NullSamples = 0xFFFFFFFF;
 		PauseStream(true);    // stop the stream if chip isn't used
 	}
-	LeaveCriticalSection(&write_sect);
+	//LeaveCriticalSection(&write_sect);
 }
 
-INLINE uint32_t MulDivRoundU(UINT64 Mul1, UINT64 Mul2, UINT64 Div){
+INLINE uint32_t MulDivRoundU(uint64_t Mul1, uint64_t Mul2, uint64_t Div){
 	return static_cast<uint32_t>((Mul1 * Mul2 + Div / 2) / Div);
 }
 
@@ -535,7 +540,8 @@ void PlayDACSample(uint8_t ChipID, uint32_t DataSize, const uint8_t *Data, uint3
 		return;
 	}
 
-	EnterCriticalSection(&write_sect);
+	const std::lock_guard<std::mutex> lock(writeGuard);
+	//EnterCriticalSection(&write_sect);
 
 	TempDAC = &DACStates[ChipID];
 	TempDAC->DataSize = DataSize;
@@ -549,7 +555,7 @@ void PlayDACSample(uint8_t ChipID, uint32_t DataSize, const uint8_t *Data, uint3
 	// Resume Stream
 	NullSamples = 0;
 	PauseStream(false);
-	LeaveCriticalSection(&write_sect);
+	//LeaveCriticalSection(&write_sect);
 }
 
 void SetDACFrequency(uint8_t ChipID, uint32_t SmplFreq){

@@ -14,14 +14,13 @@
 # endif
 #endif
 
-#include <cstdint>
-
 // default Sample Rate: 44100 Hz
 #ifdef __cplusplus
+#include <cstdint>
 // Return codes for OpenOPNDriver
 enum class DriverReturnCode : uint8_t {
 	Success = 0,
-	ZeroChipCount = 0x80,
+	DriverAlreadyInitalized = 0x80,
 	TooManyChips = 0xFF,
 	SoundDeviceError = 0xC0,
 
@@ -39,7 +38,10 @@ enum class ChipSampleMode : uint8_t{
 	HIGHEST,  // highest sample rate (native or custom)
 	CUSTOM    // custom sample rate
 };
+
+constexpr uint32_t MAX_CHIPS = 0x10;
 #else
+#include <stdint.h>
 // Return codes for OpenOPNDriver
 enum DriverReturnCode : uint8_t {
 	DriverReturnCode_Success = 0,
@@ -61,6 +63,8 @@ enum ChipSampleMode : uint8_t{
 	ChipSampleMode_HIGHEST,  // highest sample rate (native or custom)
 	ChipSampleMode_CUSTOM    // custom sample rate
 };
+
+#define MAX_CHIPS 0x10
 #endif
 
 extern "C" {
