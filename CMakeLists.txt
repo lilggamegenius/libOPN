@@ -46,11 +46,18 @@ add_library(OPN SHARED
 		src/audio/Stream.h
 		${ym2612Srcs})
 
-add_executable(libOPNTest Tests/OPNTest.cpp)
-
 target_link_libraries(OPN winmm)
 target_compile_definitions(OPN PUBLIC WIN_EXPORT)
 
 if(MSVC)
 	set_target_properties(OPN PROPERTIES OUTPUT_NAME "libOPN") # makes sure MSVC gives the right name
 endif()
+
+add_executable(OPNTest Tests/OPNTest.cpp)
+target_link_libraries(OPNTest OPN)
+
+enable_testing()
+
+add_test(NAME SoundTest
+		COMMAND OPNTest
+		WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/Tests)

@@ -9,10 +9,6 @@ extern "C" {
 
 #include <mutex>
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#undef WIN32_LEAN_AND_MEAN
-
 constexpr uint32_t YM2612_CLOCK = 7670454;
 
 extern "C" {
@@ -37,20 +33,17 @@ stream_sample_t *DUMMYBUF[0x02] = {nullptr, nullptr};
 
 static uint32_t NullSamples;
 
-//static CRITICAL_SECTION write_sect;
 static std::mutex writeGuard;
 
 static void DeinitChips(){
 	uint8_t CurChip;
 
-	delete StreamBufs[0x00]; //free(StreamBufs[0x00]);
-	delete StreamBufs[0x01]; //free(StreamBufs[0x01]);
+	delete StreamBufs[0x00];
+	delete StreamBufs[0x01];
 
 	for(CurChip = 0x00; CurChip < OPN_CHIPS; CurChip++){
 		device_stop_ym2612(CurChip);
 	}
-	//DeleteCriticalSection(&write_sect);
-
 
 	OPN_CHIPS = 0x00;
 }
@@ -106,7 +99,6 @@ static void InitChips(uint8_t ChipCount){
 		DACStates[CurChip].Data = nullptr;
 	}
 
-	//InitializeCriticalSection(&write_sect);
 	for(CurChip = 0x00; CurChip < ChipCount; CurChip++){
 		CAA = &ChipAudio[CurChip];
 		CAA->SmpRate = device_start_ym2612(CurChip, YM2612_CLOCK);
@@ -150,8 +142,8 @@ static void InitChips(uint8_t ChipCount){
 		DACStates[CurChip].Frequency = 16000;
 	}
 
-	StreamBufs[0x00] = new int32_t[SMPL_BUFSIZE]; //(int32_t *) malloc(SMPL_BUFSIZE * sizeof(int32_t));
-	StreamBufs[0x01] = new int32_t[SMPL_BUFSIZE]; //(int32_t *) malloc(SMPL_BUFSIZE * sizeof(int32_t));
+	StreamBufs[0x00] = new int32_t[SMPL_BUFSIZE];
+	StreamBufs[0x01] = new int32_t[SMPL_BUFSIZE];
 
 	OPN_CHIPS = ChipCount;
 }
@@ -192,8 +184,7 @@ void OPN_Write(uint8_t ChipID, uint16_t Register, uint8_t Data){
 		return;
 	}
 
-	const std::lock_guard<std::mutex> lock(writeGuard);
-	//EnterCriticalSection(&write_sect);
+	const std::lock_guard lock(writeGuard);
 	if(Register == 0x28 && (Data & 0xF0)){
 		// Note On - Resume Stream
 		NullSamples = 0;
@@ -207,7 +198,6 @@ void OPN_Write(uint8_t ChipID, uint16_t Register, uint8_t Data){
 	uint8_t RegSet = Register >> 8;
 	ym2612_w(ChipID, 0x00 | (RegSet << 1), Register & 0xFF);
 	ym2612_w(ChipID, 0x01 | (RegSet << 1), Data);
-	//LeaveCriticalSection(&write_sect);
 }
 
 void OPN_Mute(uint8_t ChipID, uint8_t MuteMask){
@@ -215,10 +205,8 @@ void OPN_Mute(uint8_t ChipID, uint8_t MuteMask){
 		return;
 	}
 
-	const std::lock_guard<std::mutex> lock(writeGuard);
-	//EnterCriticalSection(&write_sect);
+	const std::lock_guard lock(writeGuard);
 	ym2612_set_mute_mask(ChipID, MuteMask);
-	//LeaveCriticalSection(&write_sect);
 }
 
 INLINE int16_t Limit2Short(int32_t Value){
@@ -500,7 +488,7 @@ void FillBuffer(WAVE_16BS *Buffer, uint32_t BufferSize){
 		return;
 	}
 
-	const std::lock_guard<std::mutex> lock(writeGuard);
+	const std::lock_guard lock(writeGuard);
 	//EnterCriticalSection(&write_sect);
 	for(CurSmpl = 0x00; CurSmpl < BufferSize; CurSmpl++){
 		TempBuf.Left = 0x00;
@@ -533,19 +521,23 @@ INLINE uint32_t MulDivRoundU(uint64_t Mul1, uint64_t Mul2, uint64_t Div){
 	return static_cast<uint32_t>((Mul1 * Mul2 + Div / 2) / Div);
 }
 
-void PlayDACSample(uint8_t ChipID, uint32_t DataSize, const uint8_t *Data, uint32_t SmplFreq){
+void PlayDACSample(uint8_t ChipID, size_t DataSize, const uint8_t *Data, uint32_t SmplFreq){
+	PlayDACSample(ChipID, {Data, DataSize}, SmplFreq);
+}
+
+void PlayDACSample(uint8_t ChipID, std::span<uint8_t const> Data, uint32_t SmplFreq){
 	DACState *TempDAC;
 
 	if(ChipID >= OPN_CHIPS){
 		return;
 	}
 
-	const std::lock_guard<std::mutex> lock(writeGuard);
+	const std::lock_guard lock(writeGuard);
 	//EnterCriticalSection(&write_sect);
 
 	TempDAC = &DACStates[ChipID];
-	TempDAC->DataSize = DataSize;
-	TempDAC->Data = Data;
+	TempDAC->DataSize = Data.size();
+	TempDAC->Data = Data.data();
 	if(SmplFreq){
 		TempDAC->Frequency = SmplFreq;
 	}

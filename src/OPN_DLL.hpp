@@ -16,7 +16,9 @@
 
 // default Sample Rate: 44100 Hz
 #ifdef __cplusplus
+#define DEFAULT_ARGS(...) = __VA_ARGS__
 #include <cstdint>
+#include <span>
 // Return codes for OpenOPNDriver
 enum class DriverReturnCode : uint8_t {
 	Success = 0,
@@ -41,6 +43,7 @@ enum class ChipSampleMode : uint8_t{
 
 constexpr uint32_t MAX_CHIPS = 0x10;
 #else
+#define DEFAULT_ARGS(...)
 #include <stdint.h>
 // Return codes for OpenOPNDriver
 enum DriverReturnCode : uint8_t {
@@ -64,23 +67,35 @@ enum ChipSampleMode : uint8_t{
 	ChipSampleMode_CUSTOM    // custom sample rate
 };
 
+typedef enum ResampleMode ResampleMode
+typedef enum ChipSampleMode ChipSampleMode
+
 #define MAX_CHIPS 0x10
 #endif
 
 extern "C" {
 #include "src/audio/Stream.h"
 
-EXPORTED void SetOPNOptions(uint32_t OutSmplRate, uint8_t ResmplMode, uint8_t ChipSmplMode, uint32_t ChipSmplRate);
-EXPORTED DriverReturnCode OpenOPNDriver(uint8_t Chips);
+EXPORTED void SetOPNOptions(
+		uint32_t OutSmplRate DEFAULT_ARGS(44100),
+		ResampleMode ResmplMode DEFAULT_ARGS(ResampleMode::HIGH),
+		ChipSampleMode ChipSmplMode DEFAULT_ARGS(ChipSampleMode::NATIVE),
+		uint32_t ChipSmplRate DEFAULT_ARGS(44100)
+		);
+EXPORTED DriverReturnCode OpenOPNDriver(uint8_t Chips DEFAULT_ARGS(MAX_CHIPS));
 EXPORTED void CloseOPNDriver();
 
 EXPORTED void OPN_Write(uint8_t ChipID, uint16_t Register, uint8_t Data);
 EXPORTED void OPN_Mute(uint8_t ChipID, uint8_t MuteMask);
 
-EXPORTED void PlayDACSample(uint8_t ChipID, uint32_t DataSize, const uint8_t *Data, uint32_t SmplFreq);
+EXPORTED void PlayDACSample(uint8_t ChipID, size_t DataSize, const uint8_t *Data, uint32_t SmplFreq);
 EXPORTED void SetDACFrequency(uint8_t ChipID, uint32_t SmplFreq);
 EXPORTED void SetDACVolume(uint8_t ChipID, uint16_t Volume);    // 0x100 = 100%
 }
+
+#ifdef __cplusplus
+EXPORTED void PlayDACSample(uint8_t ChipID, std::span<uint8_t const> Data, uint32_t SmplFreq);
+#endif
 
 struct ChipAudioAttributes{
 	uint32_t SmpRate;
