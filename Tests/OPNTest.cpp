@@ -12,5 +12,7 @@ int main(int argc, char** argv){
 			SetDACVolume(i, 0);
 		}
 		CloseOPNDriver();
+		return 0;
 	}
+
 }
