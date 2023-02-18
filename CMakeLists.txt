@@ -53,10 +53,11 @@ if(MSVC)
 	set_target_properties(OPN PROPERTIES OUTPUT_NAME "libOPN") # makes sure MSVC gives the right name
 endif()
 
-add_executable(OPNTest Tests/OPNTest.cpp)
-target_link_libraries(OPNTest OPN)
-
 enable_testing()
+
+add_executable(OPNTest Tests/OPNTest.cpp)
+set_target_properties(OPNTest PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_link_libraries(OPNTest OPN)
 
 add_test(NAME SoundTest
 		COMMAND OPNTest

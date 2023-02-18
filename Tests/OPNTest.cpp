@@ -16,17 +16,20 @@ static std::atomic<bool> flag;
 
 namespace fs = std::filesystem;
 void LoadDrumSound(const fs::path &FileName, DRUM_SOUND &DrumSnd){
-	if(!fs::exists(FileName)) throw fs::filesystem_error("Sound file doesn't exist", FileName, std::error_code());
+	std::error_code err{};
+	if(!fs::exists(FileName, err)) throw fs::filesystem_error("Sound file doesn't exist", FileName, err);
 	std::ifstream drumStream(FileName, std::ios::binary);
 	DrumSnd.insert(DrumSnd.begin(), std::istream_iterator<uint8_t>(drumStream), std::istream_iterator<uint8_t>());
 }
 
 void Timer(const std::array<DRUM_SOUND, DRUM_COUNT> &DrumLib){
 	uint8_t NextDrum = 0;
+	uint8_t playCount = 20;
 	while(!flag.load(std::memory_order::relaxed)){
 		PlayDACSample(0, DrumLib[NextDrum++], 0);
 		NextDrum %= 2;
 		std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		if(--playCount == 0) break;
 	}
 }
 
@@ -43,7 +46,7 @@ int main(int argc, char**){
 		}
 		CloseOPNDriver();
 		return 0;
-	}
+	} // Now for the actual test code
 	std::array<DRUM_SOUND, DRUM_COUNT> DrumLib;
 
 	auto RetVal = OpenOPNDriver(1);
