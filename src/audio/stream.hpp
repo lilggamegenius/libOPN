@@ -1,17 +1,17 @@
 // Stream.h: Header File for constants and structures related to Sound Output
 #pragma once
 
-#include "src/ym2612/mamedef.h"
+#include <cstdint>
 
-typedef struct waveform_16bit_stereo{ // replace with template?
-	int16_t Left;
-	int16_t Right;
-} WAVE_16BS;
+template<typename size>
+struct WaveStereo{
+	size Left;
+	size Right;
+};
 
-typedef struct waveform_32bit_stereo{
-	int32_t Left;
-	int32_t Right;
-} WAVE_32BS;
+using WAVE_16BS = WaveStereo<int16_t>;
+
+using WAVE_32BS = WaveStereo<int32_t>;
 
 #define SAMPLESIZE      sizeof(WAVE_16BS)
 #define BUFSIZE_MAX     0x1000              // Maximum Buffer Size in Bytes
@@ -20,7 +20,7 @@ typedef struct waveform_32bit_stereo{
 //				1 Audio-Buffer = 10 msec, Min: 5
 //				Win95- / WinVista-safe: 500 msec
 
-uint8_t SaveFile(uint32_t FileLen, void *TempData);
+//uint8_t SaveFile(uint32_t FileLen, void *TempData);
 
 uint8_t SoundLogging(uint8_t Mode);
 

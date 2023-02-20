@@ -4,8 +4,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <windows.h>
+#include <stdint.h>
 
-#include "Stream.h"
+#include "stream.hpp"
 
 static DWORD WINAPI WaveOutThread(void *Arg);
 
@@ -100,14 +101,14 @@ uint8_t SoundLogging(uint8_t Mode){
 }
 
 uint8_t StartStream(uint8_t DeviceID){
-	uint32_t RetVal;
-	uint16_t Cnt;
-	HANDLE WaveOutThreadHandle;
-	DWORD WaveOutThreadID;
+	if(DeviceID == 0xFF){
+		return 0x00;
+	}
 
 	if(WaveOutOpen){
 		return 0xD0;
 	}   // Thread is already active
+
 
 	// Init Audio
 	WaveFmt.wFormatTag = WAVE_FORMAT_PCM;
@@ -117,9 +118,6 @@ uint8_t StartStream(uint8_t DeviceID){
 	WaveFmt.nBlockAlign = WaveFmt.wBitsPerSample * WaveFmt.nChannels / 8;
 	WaveFmt.nAvgBytesPerSec = WaveFmt.nSamplesPerSec * WaveFmt.nBlockAlign;
 	WaveFmt.cbSize = 0;
-	if(DeviceID == 0xFF){
-		return 0x00;
-	}
 
 	BUFFERSIZE = SampleRate / 100 * SAMPLESIZE;
 	if(BUFFERSIZE > BUFSIZE_MAX){
@@ -133,21 +131,22 @@ uint8_t StartStream(uint8_t DeviceID){
 	PauseThread = true;
 	CloseThread = false;
 
-	WaveOutThreadHandle = CreateThread(NULL, 0x00, &WaveOutThread, NULL, 0x00,
+	DWORD WaveOutThreadID;
+	HANDLE WaveOutThreadHandle = CreateThread(NULL, 0x00, &WaveOutThread, NULL, 0x00,
 	                                   &WaveOutThreadID);
 	if(WaveOutThreadHandle == NULL){
 		return 0xC8;    // CreateThread failed
 	}
 	CloseHandle(WaveOutThreadHandle);
 
-	RetVal = waveOutOpen(&hWaveOut, ((UINT) DeviceID - 1), &WaveFmt, 0x00, 0x00, CALLBACK_NULL);
+	uint32_t RetVal = waveOutOpen(&hWaveOut, ((UINT) DeviceID - 1), &WaveFmt, 0x00, 0x00, CALLBACK_NULL);
 	if(RetVal != MMSYSERR_NOERROR){
 		CloseThread = true;
 		return 0xC0;    // waveOutOpen failed
 	}
 	WaveOutOpen = true;
 
-	for(Cnt = 0x00; Cnt < AUDIOBUFFERU; Cnt++){
+	for(uint16_t Cnt = 0x00; Cnt < AUDIOBUFFERU; Cnt++){
 		WaveHdrOut[Cnt].lpData = BufferOut[Cnt];
 		WaveHdrOut[Cnt].dwBufferLength = BUFFERSIZE;
 		WaveHdrOut[Cnt].dwBytesRecorded = 0x00;

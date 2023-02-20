@@ -30,6 +30,7 @@ set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 
 include_directories(.)
+include_directories(lib/miniaudio)
 
 set(ym2612Srcs
 		src/ym2612/2612intf.c
@@ -42,8 +43,9 @@ set(ym2612Srcs
 add_library(OPN SHARED
 		src/OPN_DLL.cpp
 		src/OPN_DLL.hpp
-		src/audio/Stream.c
-		src/audio/Stream.h
+		#src/audio/Stream.c
+		src/audio/miniaudioStream.cpp
+		src/audio/stream.hpp
 		${ym2612Srcs})
 
 target_link_libraries(OPN winmm)

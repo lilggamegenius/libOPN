@@ -1,5 +1,7 @@
 #pragma once
 
+#include "mamedef.h"
+
 typedef struct ym2612_interface ym2612_interface;
 struct ym2612_interface
 {

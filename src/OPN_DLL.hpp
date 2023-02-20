@@ -74,8 +74,6 @@ typedef enum ChipSampleMode ChipSampleMode
 #endif
 
 extern "C" {
-#include "src/audio/Stream.h"
-
 EXPORTED void SetOPNOptions(
 		uint32_t OutSmplRate DEFAULT_ARGS(44100),
 		ResampleMode ResmplMode DEFAULT_ARGS(ResampleMode::HIGH),
@@ -94,6 +92,7 @@ EXPORTED void SetDACVolume(uint8_t ChipID, uint16_t Volume);    // 0x100 = 100%
 }
 
 #ifdef __cplusplus
+#include "src/audio/stream.hpp"
 EXPORTED void PlayDACSample(uint8_t ChipID, std::span<uint8_t const> Data, uint32_t SmplFreq);
 #endif
 
