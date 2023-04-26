@@ -2,7 +2,13 @@ cmake_minimum_required(VERSION 3.16)
 project(OPN C CXX)
 
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED 1)
+
+set(MAX_CHIPS 0x10 CACHE STRING "Max amount of chips supported")
+if(NOT MAX_CHIPS MATCHES "^0[xX][0-9a-fA-F]+$")
+	message(FATAL_ERROR "MAX_CHIPS must be a hexadecimal number greater than 1")
+endif()
 
 if (MSVC)
 	# Force to always compile with W4
@@ -17,12 +23,12 @@ else ()
 	message(WARNING "CMake flags for compiler aren't set for compiler ${CMAKE_CXX_COMPILER_ID}")
 endif ()
 
-option (FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." TRUE)
+option(FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." TRUE)
 if (${FORCE_COLORED_OUTPUT})
 	if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-		add_compile_options (-fdiagnostics-color=always)
+		add_compile_options(-fdiagnostics-color=always)
 	elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-		add_compile_options (-fcolor-diagnostics)
+		add_compile_options(-fcolor-diagnostics)
 	endif ()
 endif ()
 
@@ -33,27 +39,25 @@ include_directories(.)
 include_directories(lib/miniaudio)
 
 set(ym2612Srcs
-		src/ym2612/2612intf.c
-		src/ym2612/2612intf.h
-		src/ym2612/fm2612.c
-		src/ym2612/fm.h
-		src/ym2612/mamedef.h
+		src/ym2612/fm2612.cpp
+		src/ym2612/mamedef.hpp
 		)
 
 add_library(OPN SHARED
 		src/OPN_DLL.cpp
 		src/OPN_DLL.hpp
+		lib/miniaudio/miniaudio.c
 		#src/audio/Stream.c
 		src/audio/miniaudioStream.cpp
 		src/audio/stream.hpp
-		${ym2612Srcs})
+		${ym2612Srcs} src/audio/ym2612DataSource.cpp src/audio/ym2612DataSource.hpp)
 
 target_link_libraries(OPN winmm)
-target_compile_definitions(OPN PUBLIC WIN_EXPORT)
+target_compile_definitions(OPN PUBLIC WIN_EXPORT MA_USE_STDINT MAX_CHIPS=${MAX_CHIPS})
 
-if(MSVC)
+if (MSVC)
 	set_target_properties(OPN PROPERTIES OUTPUT_NAME "libOPN") # makes sure MSVC gives the right name
-endif()
+endif ()
 
 enable_testing()
 

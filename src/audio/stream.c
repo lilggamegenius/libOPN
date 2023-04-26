@@ -80,23 +80,14 @@ uint8_t SaveFile(uint32_t FileLen, void *TempData){
 	return 0x00;
 }
 
-uint8_t SoundLogging(uint8_t Mode){
+uint8_t SoundLogging(bool Mode){
 	uint8_t RetVal;
 
 	RetVal = (uint8_t) SoundLog;
-	switch(Mode){
-		case 0x00: SoundLog = false;
-			break;
-		case 0x01: SoundLog = true;
-			if(WaveOutOpen && hFile == NULL){
-				SaveFile(0x00000000, NULL);
-			}
-			break;
-		case 0xFF: break;
-		default: RetVal = 0xA0;
-			break;
+	SoundLog = Mode;
+	if(Mode && WaveOutOpen && hFile == NULL) {
+		SaveFile(0x00000000, NULL);
 	}
-
 	return RetVal;
 }
 
@@ -132,8 +123,7 @@ uint8_t StartStream(uint8_t DeviceID){
 	CloseThread = false;
 
 	DWORD WaveOutThreadID;
-	HANDLE WaveOutThreadHandle = CreateThread(NULL, 0x00, &WaveOutThread, NULL, 0x00,
-	                                   &WaveOutThreadID);
+	HANDLE WaveOutThreadHandle = CreateThread(NULL, 0x00, &WaveOutThread, NULL, 0x00, &WaveOutThreadID);
 	if(WaveOutThreadHandle == NULL){
 		return 0xC8;    // CreateThread failed
 	}

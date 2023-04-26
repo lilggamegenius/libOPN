@@ -17,7 +17,7 @@ static std::atomic<bool> flag;
 namespace fs = std::filesystem;
 void LoadDrumSound(const fs::path &FileName, DRUM_SOUND &DrumSnd){
 	std::error_code err{};
-	if(!fs::exists(FileName, err)) throw fs::filesystem_error("Sound file doesn't exist", FileName, err);
+	if(!fs::exists(FileName, err)) { throw fs::filesystem_error("Sound file doesn't exist", FileName, err); }
 	std::ifstream drumStream(FileName, std::ios::binary);
 	DrumSnd.insert(DrumSnd.begin(), std::istream_iterator<uint8_t>(drumStream), std::istream_iterator<uint8_t>());
 }
@@ -29,11 +29,11 @@ void Timer(const std::array<DRUM_SOUND, DRUM_COUNT> &DrumLib){
 		PlayDACSample(0, DrumLib[NextDrum++], 0);
 		NextDrum %= 2;
 		std::this_thread::sleep_for(std::chrono::milliseconds(500));
-		if(--playCount == 0) break;
+		if(--playCount == 0) { break; }
 	}
 }
 
-int main(int argc, char**){
+int main(int argc, char** /*unused*/){
 	if(argc == 0){ // Only here to hide unused warnings for exported functions
 		OpenOPNDriver(MAX_CHIPS);
 		SetOPNOptions();
@@ -60,6 +60,7 @@ int main(int argc, char**){
 	OPN_Write(0, 0x2B, 0x80);
 	flag.store(false, std::memory_order::relaxed);
 	std::thread dac(Timer, DrumLib);
+	std::cout << "Press Enter to end test\n";
 	std::cin.ignore();
 	flag.store(true, std::memory_order::relaxed);
 	dac.join();
